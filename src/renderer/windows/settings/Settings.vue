@@ -435,7 +435,7 @@ window.ytmd.handleUpdateDownloaded(() => {
             type="checkbox"
             name="Enhanced media service"
             description="An enhanced media service that can provide better media button controls"
-            :disabled="!isDarwin"
+            :disabled="isDarwin"
             disabled-message="This integration is unavailable on your platform"
             beta
             @change="settingsChanged"
