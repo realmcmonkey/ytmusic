@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
+import nodeNativesPlugin from "./plugins/node-natives";
 
 let gitBranch: string = "";
 try {
@@ -29,6 +30,7 @@ export default defineConfig({
       external: ["bufferutil", "utf-8-validate"]
     }
   },
+  plugins: [nodeNativesPlugin()],
   define: {
     YTMD_DISABLE_UPDATES: devBuild,
     YTMD_UPDATE_FEED_OWNER: process.env.YTMD_UPDATE_FEED_OWNER ? `'${process.env.YTMD_UPDATE_FEED_OWNER}'` : "'ytmdesktop'",
