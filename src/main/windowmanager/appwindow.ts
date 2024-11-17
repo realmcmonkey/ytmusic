@@ -65,8 +65,16 @@ export type AppWindowOptions<T extends AppWindowType> = {
    * The url to load for the window
    *
    * This only works if AppWindowType is set to "Browser"
+   * @see file Cannot be specified if using this property
    */
-  url: string;
+  url?: string;
+  /**
+   * The file to load for the window
+   *
+   * This only works if AppWindowType is set to "Browser"
+   * @see url Cannot be specified if using this property
+   */
+  file?: string;
 };
 
 export class AppWindow<T extends AppWindowType> extends EventEmitter<AppWindowEventMap> {
@@ -105,6 +113,8 @@ export class AppWindow<T extends AppWindowType> extends EventEmitter<AppWindowEv
 
   public constructor(windowType: T, parentManager: AppWindowManager, windowOptions: AppWindowOptions<T>) {
     super();
+
+    if (windowOptions.url && windowOptions.file) throw new Error("Only one of 'url' or 'file' can be provided when creating an AppWindow");
 
     this.windowType = windowType;
     this.options = windowOptions;
@@ -326,7 +336,9 @@ export class AppWindow<T extends AppWindowType> extends EventEmitter<AppWindowEv
     if (this.windowType === "Browser") {
       if (!app.isPackaged) (this.electronWindow as BrowserWindow).webContents.openDevTools();
 
-      (this.electronWindow as BrowserWindow).loadURL(this.options.url);
+      const browserWindow = this.electronWindow as BrowserWindow;
+      if (this.options.url) browserWindow.loadURL(this.options.url);
+      else if (this.options.file) browserWindow.loadFile(this.options.file);
     }
 
     this.initialCreation = false;

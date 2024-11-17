@@ -29,7 +29,11 @@ export type AppViewOptions = {
   /**
    * The url to load for the view
    */
-  url: string;
+  url?: string;
+  /**
+   * The file to load for the view
+   */
+  file?: string;
   /**
    * Whether to automatically recreate this view when it crashes
    */
@@ -109,6 +113,8 @@ export class AppView extends EventEmitter<AppViewEventMap> {
 
   public constructor(viewOptions: AppViewOptions) {
     super();
+
+    if (viewOptions.url && viewOptions.file) throw new Error("Only one of 'url' or 'file' can be provided when creating an AppView");
 
     this.options = viewOptions;
     this.name = viewOptions.name;
@@ -240,7 +246,8 @@ export class AppView extends EventEmitter<AppViewEventMap> {
     log.debug(`AppView '${this.name}' created`);
 
     this.electronView = new WebContentsView(this.options.electronOptions);
-    this.electronView.webContents.loadURL(this.options.url);
+    if (this.options.url) this.electronView.webContents.loadURL(this.options.url);
+    else if (this.options.file) this.electronView.webContents.loadFile(this.options.file);
     this.attachElectronViewEvents();
     if (this.parentWindow) this._attachToWindow(this.parentWindow, this.lastViewIndex);
   }
