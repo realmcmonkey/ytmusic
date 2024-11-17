@@ -8,8 +8,7 @@ import log from "electron-log";
 import Manager from "./manager";
 import statemanager from "./statemanager";
 import memoryStore from "./memory-store";
-
-declare const YTM_VIEW_PRELOAD_WEBPACK_ENTRY: string;
+import path from "node:path";
 
 export type YTMViewManagerEventMap = {
   "status-changed": [];
@@ -142,7 +141,7 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
           sandbox: true,
           contextIsolation: true,
           partition: app.isPackaged ? "persist:ytmview" : "persist:ytmview-dev",
-          preload: YTM_VIEW_PRELOAD_WEBPACK_ENTRY,
+          preload: path.join(__dirname, `../renderer/windows/ytmview/preload.js`),
           devTools: !app.isPackaged ? true : configStore.get("developer.enableDevTools"),
           autoplayPolicy: configStore.get("playback.continueWhereYouLeftOffPaused") ? "document-user-activation-required" : "no-user-gesture-required"
         }

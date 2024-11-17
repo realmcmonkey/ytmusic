@@ -1,7 +1,7 @@
 import { ipcRenderer, webFrame } from "electron";
-import toggleLikeScript from "../scripts/togglelike.script";
-import toggleDislikeScript from "../scripts/toggledislike.script";
-import getPlaylistsScript from "../scripts/getplaylists.script";
+import toggleLikeScript from "../scripts/togglelike.script?raw";
+import toggleDislikeScript from "../scripts/toggledislike.script?raw";
+import getPlaylistsScript from "../scripts/getplaylists.script?raw";
 
 function getYTMTextRun(runs: { text: string }[]) {
   let final = "";

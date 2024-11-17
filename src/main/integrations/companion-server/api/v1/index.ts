@@ -89,7 +89,7 @@ type Playlist = {
 
 const authorizationWindows: BrowserWindow[] = [];
 
-const CompanionServerAPIv1: FastifyPluginCallback = async (fastify, options, next) => {
+const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
   const sendCommand = (commandRequest: APIV1CommandRequestBodyType) => {
     const ytmView = ytmviewmanager.getView();
     if (ytmView) {

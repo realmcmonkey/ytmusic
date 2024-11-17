@@ -1,5 +1,5 @@
 import { webFrame } from "electron";
-import hookPlayerApiEventsScript from "../scripts/hookplayerapievents.script";
+import hookPlayerApiEventsScript from "../scripts/hookplayerapievents.script?raw";
 
 export async function hookPlayerApiEvents() {
   (await webFrame.executeJavaScript(hookPlayerApiEventsScript))();

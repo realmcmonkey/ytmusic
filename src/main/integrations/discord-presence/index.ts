@@ -1,7 +1,4 @@
 import playerStateStore, { PlayerState, Thumbnail, VideoState, VideoDetails } from "../../player-state-store";
-import IIntegration from "../integration";
-import MemoryStore from "../../memory-store";
-import { MemoryStoreSchema } from "~shared/store/schema";
 import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
@@ -106,7 +103,7 @@ export default class DiscordPresence extends Integration {
       this.activityDebounceTimeout = null;
     }, 1000);
   }
-  
+
   private playerStateChanged(state: PlayerState) {
     if (!this.ready) return;
 

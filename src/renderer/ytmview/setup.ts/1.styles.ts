@@ -13,10 +13,6 @@ export function createStyleSheet() {
         padding-top: 12px;
       }
 
-      .ytmd-history-forward {
-        transform: rotate(180deg);
-      }
-
       .ytmd-history-back.disabled, .ytmd-history-forward.disabled {
         cursor: not-allowed;
       }

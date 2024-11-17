@@ -20,19 +20,13 @@ import shortcutmanager from "./shortcutmanager";
 import path from "node:path";
 import statemanager from "./statemanager";
 import taskbarmanager from "./taskbarmanager";
+import electronSquirrelStartup from "electron-squirrel-startup";
 
-declare const TITLEBAR_WINDOW_WEBPACK_ENTRY: string;
-declare const TITLEBAR_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-declare const UPDATER_WINDOW_WEBPACK_ENTRY: string;
-declare const UPDATER_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
-declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
-declare const SETTINGS_WINDOW_WEBPACK_ENTRY: string;
-declare const SETTINGS_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
 // Squirrel shortcut creation/removal
 // This is part of application installation/uninstallation process close the app immediately
-if (require("electron-squirrel-startup")) {
+if (electronSquirrelStartup) {
   app.exit();
 }
 
@@ -130,7 +124,9 @@ app.on("ready", async () => {
     name: "Updater",
     autoRecreate: true,
     waitForViews: true,
-    url: UPDATER_WINDOW_WEBPACK_ENTRY,
+    url: ALL_WINDOWS_VITE_DEV_SERVER_URL
+      ? ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/updater/index.html"
+      : path.join(__dirname, `../renderer/windows/updater/index.html`),
     electronOptions: {
       width: 256,
       height: 320,
@@ -144,7 +140,7 @@ app.on("ready", async () => {
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
-        preload: UPDATER_WINDOW_PRELOAD_WEBPACK_ENTRY,
+        preload: path.join(__dirname, `../renderer/windows/updater/preload.js`),
         devTools: !app.isPackaged ? true : configStore.get("developer.enableDevTools")
       }
     }
@@ -225,7 +221,9 @@ app.on("ready", async () => {
 
   const mainView = new AppView({
     name: "Main",
-    url: MAIN_WINDOW_WEBPACK_ENTRY,
+    url: ALL_WINDOWS_VITE_DEV_SERVER_URL
+      ? ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/main/index.html"
+      : path.join(__dirname, `../renderer/windows/main/index.html`),
     autoRecreate: true,
     viewState: {
       autoResize: {
@@ -242,7 +240,7 @@ app.on("ready", async () => {
         transparent: true,
         sandbox: true,
         contextIsolation: true,
-        preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+        preload: path.join(__dirname, `../renderer/windows/main/preload.js`),
         devTools: !app.isPackaged ? true : configStore.get("developer.enableDevTools")
       }
     }
@@ -256,7 +254,9 @@ app.on("ready", async () => {
       maximized: configStore.get("state.windowMaximized")
     },
     views: [mainView],
-    url: TITLEBAR_WINDOW_WEBPACK_ENTRY,
+    url: ALL_WINDOWS_VITE_DEV_SERVER_URL
+      ? ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/titlebar/index.html"
+      : path.join(__dirname, `../renderer/windows/titlebar/index.html`),
     electronOptions: {
       width: windowBounds?.width ?? 1280 / scaleFactor,
       height: windowBounds?.height ?? 720 / scaleFactor,
@@ -276,7 +276,7 @@ app.on("ready", async () => {
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
-        preload: TITLEBAR_WINDOW_PRELOAD_WEBPACK_ENTRY,
+        preload: path.join(__dirname, `../renderer/windows/titlebar/preload.js`),
         devTools: !app.isPackaged ? true : configStore.get("developer.enableDevTools"),
         additionalArguments: ["is-main-window"]
       }
@@ -323,7 +323,9 @@ app.on("ready", async () => {
       name: "Settings",
       autoRecreate: true,
       waitForViews: true,
-      url: SETTINGS_WINDOW_WEBPACK_ENTRY,
+      url: ALL_WINDOWS_VITE_DEV_SERVER_URL
+        ? ALL_WINDOWS_VITE_DEV_SERVER_URL + "/windows/settings/index.html"
+        : path.join(__dirname, `../renderer/windows/settings/index.html`),
       electronOptions: {
         width: 800,
         height: 600,
@@ -346,7 +348,7 @@ app.on("ready", async () => {
         webPreferences: {
           sandbox: true,
           contextIsolation: true,
-          preload: SETTINGS_WINDOW_PRELOAD_WEBPACK_ENTRY,
+          preload: path.join(__dirname, `../renderer/windows/settings/preload.js`),
           devTools: !app.isPackaged ? true : configStore.get("developer.enableDevTools")
         }
       }

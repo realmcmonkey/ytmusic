@@ -1,6 +1,6 @@
-import enableScript from "./script/enable.script";
-import disableScript from "./script/disable.script";
-import forceUpdateVolume from "./script/forceupdatevolume.script";
+import enableScript from "./script/enable.script?raw";
+import disableScript from "./script/disable.script?raw";
+import forceUpdateVolume from "./script/forceupdatevolume.script?raw";
 import Integration from "../integration";
 import ytmviewmanager from "../../ytmviewmanager";
 

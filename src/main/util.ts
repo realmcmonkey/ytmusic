@@ -16,7 +16,7 @@ export async function v1ConfigMigration() {
   const firstRunPath = path.join(app.getPath("userData"), ".first-run");
   try {
     await fs.access(firstRunPath, fs.constants.F_OK);
-  } catch (_) {
+  } catch {
     // This is the first run of the program
     const firstRunTouch = await fs.open(firstRunPath, "a");
     await firstRunTouch.close();
@@ -148,7 +148,7 @@ export async function v1ConfigMigration() {
           detail: "Your settings have been migrated."
         });
       }
-    } catch (_) {
+    } catch {
       await dialog.showMessageBox({
         type: "warning",
         message: "Settings not migrated!",

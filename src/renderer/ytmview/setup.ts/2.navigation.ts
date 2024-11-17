@@ -4,7 +4,7 @@ export function createNavigationMenuArrows() {
   // Go back in history
   const historyBackElement = document.createElement("span");
   historyBackElement.classList.add("material-symbols-outlined", "ytmd-history-back", "disabled");
-  historyBackElement.innerText = "keyboard_backspace";
+  historyBackElement.innerText = "west";
 
   historyBackElement.addEventListener("click", function () {
     if (!historyBackElement.classList.contains("disabled")) {
@@ -15,7 +15,7 @@ export function createNavigationMenuArrows() {
   // Go forward in history
   const historyForwardElement = document.createElement("span");
   historyForwardElement.classList.add("material-symbols-outlined", "ytmd-history-forward", "disabled");
-  historyForwardElement.innerText = "keyboard_backspace";
+  historyForwardElement.innerText = "east";
 
   historyForwardElement.addEventListener("click", function () {
     if (!historyForwardElement.classList.contains("disabled")) {
