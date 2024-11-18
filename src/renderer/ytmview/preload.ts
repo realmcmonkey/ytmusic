@@ -93,7 +93,7 @@ window.addEventListener("load", async () => {
     {
       await ExtrasSetup.overrideHistoryButtonDisplay();
       await ExtrasSetup.hideChromecastButton();
-      await ExtrasSetup.overrideHistoryButtonDisplay();
+      await ExtrasSetup.createAdditionalPlayerBarControls();
 
       setupCompletions |= YTMViewSetupCompletionFlags.Extras;
     }
