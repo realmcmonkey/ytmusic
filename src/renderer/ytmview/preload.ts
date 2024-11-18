@@ -12,7 +12,7 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 import Store from "../store-ipc/store";
 import { StoreSchema } from "~shared/store/schema";
 
-import { ChromecastSetup, EarlySetup, ExtraControlsSetup, ExtrasSetup, HooksSetup, NavigationSetup, RemoteSetup, StylesSetup } from "./setup.ts";
+import { EarlySetup, ExtrasSetup, HooksSetup, NavigationSetup, RemoteSetup, StylesSetup } from "./setup.ts";
 
 import { YTMViewSetupCompletionFlags } from "~shared/types";
 
@@ -41,7 +41,7 @@ window.addEventListener("load", async () => {
   }
 
   // TODO: This is not currently fully utilized yet
-  let setupCompletions = YTMViewSetupCompletionFlags.None;
+  let setupCompletions = 0;
   try {
     {
       EarlySetup.waitForYTMObjectHooks();
@@ -78,12 +78,6 @@ window.addEventListener("load", async () => {
     }
 
     {
-      ChromecastSetup.hideChromecastButton();
-
-      setupCompletions |= YTMViewSetupCompletionFlags.Chromecast;
-    }
-
-    {
       await HooksSetup.waitForReady();
       await HooksSetup.hookPlayerApiEvents();
 
@@ -91,21 +85,17 @@ window.addEventListener("load", async () => {
     }
 
     {
-      await ExtraControlsSetup.createAdditionalPlayerBarControls();
+      RemoteSetup.attachIPCListeners();
 
-      setupCompletions |= YTMViewSetupCompletionFlags.ExtraControls;
+      setupCompletions |= YTMViewSetupCompletionFlags.Remote;
     }
 
     {
       await ExtrasSetup.overrideHistoryButtonDisplay();
+      await ExtrasSetup.hideChromecastButton();
+      await ExtrasSetup.overrideHistoryButtonDisplay();
 
       setupCompletions |= YTMViewSetupCompletionFlags.Extras;
-    }
-
-    {
-      RemoteSetup.attachIPCListeners();
-
-      setupCompletions |= YTMViewSetupCompletionFlags.Remote;
     }
 
     //createKeyboardNavigation();
@@ -160,10 +150,9 @@ window.addEventListener("load", async () => {
         }
       }
     });
-
-    ipcRenderer.send("ytmView:ready", setupCompletions);
   } catch (error) {
     ipcRenderer.send("ytmView:errored", error);
+  } finally {
     ipcRenderer.send("ytmView:ready", setupCompletions);
   }
 });

@@ -51,6 +51,7 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
   private ytmView: AppView;
   private hooksReady = false;
   private hookError: Error | null = null;
+  private setupCompletionFlags = 0;
 
   private _lateInitialized = false;
   private _initialized = false;
@@ -257,8 +258,9 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
     this.setWindowOpenHandler();
 
     // YTM View IPC
-    this.ytmView.ipcOn("ytmView:ready", () => {
+    this.ytmView.ipcOn("ytmView:ready", async (event, setupCompletionFlags) => {
       this.hooksReady = true;
+      this.setupCompletionFlags = setupCompletionFlags;
       this.setStatus(YTMViewStatus.Ready);
     });
     this.ytmView.ipcOn("ytmView:errored", (_event, error) => {
@@ -307,6 +309,10 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
 
   public getError() {
     return this.hookError;
+  }
+
+  public getSetupFlags() {
+    return this.setupCompletionFlags;
   }
 
   private setStatus(status: YTMViewStatus) {

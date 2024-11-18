@@ -11,16 +11,20 @@ export enum YTMViewStatus {
 }
 
 export enum YTMViewSetupCompletionFlags {
-  None = 0,
   Early = 1,
   Styles = 2,
   Navigation = 4,
-  Chromecast = 8,
-  Hooks = 16,
-  ExtraControls = 32,
-  Extras = 64,
-  Remote = 128
+  Hooks = 8,
+  Remote = 16,
+  Extras = 32
 }
+export const AllYTMViewSetupCompletionFlags = (Object.values(YTMViewSetupCompletionFlags) as YTMViewSetupCompletionFlags[]).reduce(
+  (prev, curr) => prev | curr,
+  0
+);
+export const YTMViewSetupCompletionFlagsNames = Object.keys(YTMViewSetupCompletionFlags).filter(key => isNaN(Number(key))) as Array<
+  keyof typeof YTMViewSetupCompletionFlags
+>;
 
 export type Paths<T> = T extends object
   ? { [K in keyof T]: Exclude<K, symbol> extends string ? `${Exclude<K, symbol>}${"" | `.${Paths<T[K]>}`}` : never }[keyof T]

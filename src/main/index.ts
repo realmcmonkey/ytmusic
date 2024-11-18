@@ -5,7 +5,7 @@ import windowmanager from "./windowmanager";
 import { getIconPath, v1ConfigMigration } from "./util";
 import autoupdater from "./autoupdater";
 import { AppView } from "./windowmanager/appview";
-import { YTMViewStatus } from "~shared/types";
+import { YTMViewSetupCompletionFlags, YTMViewSetupCompletionFlagsNames, YTMViewStatus } from "~shared/types";
 import ytmviewmanager from "./ytmviewmanager";
 import integrationmanager, { IntegrationManagerHook } from "./integrations/integrationmanager";
 import CompanionServer from "./integrations/companion-server";
@@ -452,7 +452,13 @@ app.on("ready", async () => {
       await mainView.hide(true);
       if (ytmviewmanager.hasError()) {
         const hookError = ytmviewmanager.getError();
-        const dialogMessage = `Features from YouTube Music Desktop App may not be present or function correctly\n\n` + `${hookError.stack}`;
+        const setupFlags = ytmviewmanager.getSetupFlags();
+        const setFlags = YTMViewSetupCompletionFlagsNames.filter(key => (setupFlags & YTMViewSetupCompletionFlags[key]) !== 0);
+        const unsetFlags = YTMViewSetupCompletionFlagsNames.filter(key => (setupFlags & YTMViewSetupCompletionFlags[key]) === 0);
+
+        const dialogMessage =
+          `Features from YouTube Music Desktop App may not be present or function correctly\n\nHook log:\n${setFlags.map(flag => `    ${flag}... OK\n`).join("")}${unsetFlags.map(flag => `    ${flag}... FAIL\n`).join("")}\n` +
+          `${hookError.stack}`;
         dialog.showMessageBox({
           title: "Hook Error",
           message: "YouTube Music Desktop App could not hook YouTube Music",
