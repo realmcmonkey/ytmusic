@@ -141,7 +141,7 @@ class ConfigStore implements Manager {
     return this.conf.onDidAnyChange(callback);
   }
 
-  // TODO: This should probably be moved somewhere else
+  // TODO: This should probably be moved somewhere else as this isn't the job of the config store
   private reconcileConfig(newState: Readonly<StoreSchema>, oldState: Readonly<StoreSchema>) {
     if (newState.general.startOnBoot != oldState.general.startOnBoot) {
       app.setLoginItemSettings({
