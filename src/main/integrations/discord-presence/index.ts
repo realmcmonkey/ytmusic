@@ -131,7 +131,8 @@ export default class DiscordPresence extends Integration {
     this.pauseTimeout = setTimeout(() => {
       if (!this.discordClient && !this.ready) return;
       this.discordClient.clearActivity();
-    });
+      this.pauseTimeout = null;
+    }, 30 * 1000);
   }
 
   private retryDiscordConnection() {
