@@ -1,14 +1,14 @@
 import { app, Menu, session, shell } from "electron";
-import { AppView } from "./windowmanager/appview";
-import { YTMViewStatus } from "~shared/types";
-import EventEmitter from "node:events";
-import playerStateStore from "./player-state-store";
-import configStore from "./config-store";
+import { DependencyConstructor, YTMViewStatus } from "~shared/types";
+import playerStateStore from "../../player-state-store";
 import log from "electron-log";
-import Manager from "./manager";
-import statemanager from "./statemanager";
-import memoryStore from "./memory-store";
 import path from "node:path";
+import Service, { EventEmitterService } from "../service";
+import ConfigStore from "../configstore";
+import { AppView } from "../windowmanager/appview";
+import StateManager from "../statemanager";
+import MemoryStore from "../memorystore";
+import { MemoryStoreSchema } from "~shared/store/schema";
 
 export type YTMViewManagerEventMap = {
   "status-changed": [];
@@ -47,13 +47,14 @@ function openExternalFromYtmView(urlString: string) {
   }
 }
 
-class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Manager {
+export default class YTMViewManager extends EventEmitterService<YTMViewManagerEventMap> {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [ConfigStore, StateManager, MemoryStore<MemoryStoreSchema>];
+
   private ytmView: AppView;
   private hooksReady = false;
   private hookError: Error | null = null;
   private setupCompletionFlags = 0;
 
-  private _lateInitialized = false;
   private _initialized = false;
   public get initialized() {
     return this._initialized;
@@ -64,23 +65,22 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
     return this._status;
   }
 
-  public initialize() {
+  public override onPreInitialized() {}
+
+  public onInitialized() {
     if (this._initialized) throw new Error("YTMViewManager is already initialized!");
     this._initialized = true;
 
+    log.info("YTMViewManager initialized");
+  }
+
+  public override onPostInitialized() {
+    const configStore = this.getDependency(ConfigStore);
     configStore.onDidChange("appearance", newState => {
       if (this.ytmView) {
         this.ytmView.webContents.setZoomFactor(newState.zoom / 100);
       }
     });
-
-    log.info("YTMViewManager initialized");
-  }
-
-  public lateInitialize() {
-    if (!this._initialized) throw new Error("YTMViewManager is not initialized and cannot call lateInitialize");
-    if (this._lateInitialized) throw new Error("YTMViewManager is already late initialized!");
-    this._lateInitialized = true;
 
     //#region Permission handlers
     session.fromPartition("persist:ytmview").setPermissionCheckHandler((webContents, permission) => {
@@ -104,11 +104,17 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
     //#endregion
   }
 
+  public override onTerminated() {}
+
   public isInitialized() {
     return this.initialized;
   }
 
   public createView() {
+    const configStore = this.getDependency(ConfigStore);
+    const stateManager = this.getDependency(StateManager);
+    const memoryStore = this.getDependency(MemoryStore<MemoryStoreSchema>);
+
     this.setStatus(YTMViewStatus.Loading);
 
     let url = "https://music.youtube.com/";
@@ -180,14 +186,14 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
     });
     this.ytmView.on("webcontents-did-navigate", () => {
       const url = this.ytmView.webContents.getURL();
-      statemanager.updateState({
+      stateManager.updateState({
         lastUrl: url
       });
       this.sendNavigationHistory();
     });
     this.ytmView.on("webcontents-did-navigate-in-page", () => {
       const url = this.ytmView.webContents.getURL();
-      statemanager.updateState({
+      stateManager.updateState({
         lastUrl: url
       });
       this.sendNavigationHistory();
@@ -275,7 +281,7 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
       playerStateStore.updateVideoState(state);
     });
     this.ytmView.ipcOn("ytmApi:videoDataChanged", (_event, videoDetails, playlistId, album, likeStatus, hasFullMetadata) => {
-      statemanager.updateState({
+      stateManager.updateState({
         lastVideoId: videoDetails.videoId,
         lastPlaylistId: playlistId
       });
@@ -337,5 +343,3 @@ class YTMViewManager extends EventEmitter<YTMViewManagerEventMap> implements Man
     });
   }
 }
-
-export default new YTMViewManager();

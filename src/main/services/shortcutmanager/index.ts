@@ -1,40 +1,56 @@
 import { globalShortcut } from "electron";
-import configStore from "./config-store";
 import log from "electron-log";
-import ytmviewmanager from "./ytmviewmanager";
-import memoryStore from "./memory-store";
-import Manager from "./manager";
+import Service from "../service";
+import ConfigStore from "../configstore";
+import { MemoryStoreSchema, StoreSchema } from "~shared/store/schema";
+import YTMViewManager from "../ytmviewmanager";
+import { DependencyConstructor } from "~shared/types";
+import MemoryStore from "../memorystore";
 
-class ShortcutManager implements Manager {
+export default class ShortcutManager extends Service {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [ConfigStore, YTMViewManager, MemoryStore<MemoryStoreSchema>];
+
   private _initialized = false;
   public get initialized() {
     return this._initialized;
   }
 
-  public initialize() {
+  public override onPreInitialized(): void {}
+  public onInitialized() {
     if (this._initialized) throw new Error("ShortcutManager is already initialized!");
     this._initialized = true;
 
-    this.reconcileShortcuts();
-    configStore.onDidChange("shortcuts", () => {
-      this.reconcileShortcuts();
-    });
-
     log.info("ShortcutManager initialized");
   }
+  public override onPostInitialized(): void {
+    const configStore = this.getDependency(ConfigStore);
+    configStore.onDidChange("shortcuts", shortcuts => {
+      this.reconcileShortcuts(shortcuts);
+    });
 
-  public reconcileShortcuts() {
-    const shortcuts = configStore.get("shortcuts");
+    this.reconcileShortcuts();
+  }
+  public override onTerminated(): void {}
+
+  public reconcileShortcuts(state?: StoreSchema["shortcuts"]) {
+    let shortcuts = state;
+    if (!state) {
+      const configStore = this.getDependency(ConfigStore);
+      shortcuts = configStore.get("shortcuts");
+    }
 
     globalShortcut.unregisterAll();
     log.info("Unregistered shortcuts");
+
+    const ytmViewManager = this.getDependency(YTMViewManager);
+    const memoryStore = this.getDependency(MemoryStore<MemoryStoreSchema>);
 
     if (shortcuts.playPause) {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.playPause, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "playPause");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "playPause");
         });
       } catch {
         /* ignored */
@@ -55,8 +71,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.next, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "next");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "next");
         });
       } catch {
         /* empty */
@@ -77,8 +93,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.previous, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "previous");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "previous");
         });
       } catch {
         /* empty */
@@ -99,8 +115,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.thumbsUp, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "toggleLike");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "toggleLike");
         });
       } catch {
         /* empty */
@@ -121,8 +137,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.thumbsDown, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "toggleDislike");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "toggleDislike");
         });
       } catch {
         /* empty */
@@ -143,8 +159,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.volumeUp, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "volumeUp");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "volumeUp");
         });
       } catch {
         /* empty */
@@ -165,8 +181,8 @@ class ShortcutManager implements Manager {
       let registered = false;
       try {
         registered = globalShortcut.register(shortcuts.volumeDown, async () => {
-          await ytmviewmanager.ready();
-          ytmviewmanager.getView().webContents.send("remoteControl:execute", "volumeDown");
+          await ytmViewManager.ready();
+          ytmViewManager.getView().webContents.send("remoteControl:execute", "volumeDown");
         });
       } catch {
         /* empty */
@@ -186,5 +202,3 @@ class ShortcutManager implements Manager {
     log.info("Registered shortcuts");
   }
 }
-
-export default new ShortcutManager();

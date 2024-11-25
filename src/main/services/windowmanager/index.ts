@@ -1,7 +1,13 @@
+import Service from "../service";
 import { AppWindow, AppWindowOptions, AppWindowType } from "./appwindow";
 
-export class AppWindowManager {
+export default class AppWindowManager extends Service {
   private activeWindows: { [windowName: string]: AppWindow<AppWindowType> } = {};
+
+  public override onPreInitialized() {}
+  public override onInitialized() {}
+  public override onPostInitialized() {}
+  public override onTerminated() {}
 
   public createWindow<T extends AppWindowType>(windowType: T, windowOptions: AppWindowOptions<T>): AppWindow<T> {
     if (this.activeWindows[windowOptions.name]) throw new Error(`Window with the name '${windowOptions.name}' already exists`);
@@ -43,5 +49,3 @@ export class AppWindowManager {
     }
   }
 }
-
-export default new AppWindowManager();

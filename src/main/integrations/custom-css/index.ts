@@ -2,8 +2,8 @@ import fs from "fs";
 
 import Integration from "../integration";
 import { Unsubscribe } from "conf/dist/source/types";
-import configStore from "../../config-store";
-import ytmviewmanager from "../../ytmviewmanager";
+import YTMViewManager from "../../services/ytmviewmanager";
+import ConfigStore from "../../services/configstore";
 
 export default class CustomCSS extends Integration {
   public override name = "CustomCSS";
@@ -20,8 +20,13 @@ export default class CustomCSS extends Integration {
     this.updateCSS();
   };
 
+  public onSetup() {}
+
   public onEnabled(): void {
-    ytmviewmanager.on("view-recreated", this.ytmViewRecreatedListener);
+    const ytmViewManager = this.getService(YTMViewManager);
+    const configStore = this.getService(ConfigStore);
+
+    ytmViewManager.on("view-recreated", this.ytmViewRecreatedListener);
     this.storeListener = configStore.onDidChange("appearance", (newState, oldState) => {
       if (newState.customCSSEnabled && newState.customCSSPath != oldState.customCSSPath) {
         this.updateCSS();
@@ -32,7 +37,9 @@ export default class CustomCSS extends Integration {
   }
 
   public onDisabled(): void {
-    ytmviewmanager.off("view-recreated", this.ytmViewRecreatedListener);
+    const ytmViewManager = this.getService(YTMViewManager);
+
+    ytmViewManager.off("view-recreated", this.ytmViewRecreatedListener);
     if (this.currentWatcher) {
       this.currentWatcher.close();
       this.currentWatcher = null;
@@ -53,12 +60,15 @@ export default class CustomCSS extends Integration {
   private async injectCSS() {
     if (this.injected) return;
 
+    const ytmViewManager = this.getService(YTMViewManager);
+    const configStore = this.getService(ConfigStore);
+
     const cssPath = configStore.get("appearance.customCSSPath");
     if (cssPath && fs.existsSync(cssPath)) {
       const content: string = fs.readFileSync(cssPath, "utf8");
 
-      await ytmviewmanager.ready();
-      this.customCSSKey = await ytmviewmanager.getView().webContents.insertCSS(content);
+      await ytmViewManager.ready();
+      this.customCSSKey = await ytmViewManager.getView().webContents.insertCSS(content);
       this.injected = true;
 
       this.watchCSSFile(cssPath);
@@ -68,8 +78,10 @@ export default class CustomCSS extends Integration {
   private async removeCSS() {
     if (this.customCSSKey === null && !this.injected) return;
 
-    await ytmviewmanager.ready();
-    await ytmviewmanager.getView().webContents.removeInsertedCSS(this.customCSSKey);
+    const ytmViewManager = this.getService(YTMViewManager);
+
+    await ytmViewManager.ready();
+    await ytmViewManager.getView().webContents.removeInsertedCSS(this.customCSSKey);
 
     this.customCSSKey = null;
     this.injected = false;
@@ -91,6 +103,8 @@ export default class CustomCSS extends Integration {
         this.updateCSS();
       } else if (type === "rename") {
         if (filename) {
+          const configStore = this.getService(ConfigStore);
+
           configStore.set("appearance.customCSSPath", null);
           this.removeCSS();
           this.currentWatcher.close();

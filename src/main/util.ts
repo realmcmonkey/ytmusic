@@ -1,7 +1,7 @@
 import { app, dialog } from "electron";
 import path from "node:path";
 import fs from "node:fs/promises";
-import configStore from "./config-store";
+import configStore from "./services/configstore";
 
 export const assetFolder = path.join(!app.isPackaged ? path.join(app.getAppPath(), "src/assets") : process.resourcesPath);
 

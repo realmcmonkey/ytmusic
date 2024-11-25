@@ -1,13 +1,16 @@
 import { StoreSchema } from "~shared/store/schema";
-import configStore from "./config-store";
-import Manager from "./manager";
-import watchdog from "./watchdog";
+import Service from "../service";
+import ConfigStore from "../configstore";
+import WatchDog from "../watchdog";
+import { DependencyConstructor } from "~shared/types";
 
 function shallowEqual<T extends Record<string, unknown>>(obj1: T, obj2: T): boolean {
   return Object.keys(obj1).length === Object.keys(obj2).length && Object.keys(obj1).every(key => Object.hasOwn(obj2, key) && obj1[key] === obj2[key]);
 }
 
-class StateManager implements Manager {
+export default class StateManager extends Service {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [ConfigStore, WatchDog];
+
   private currentState: StoreSchema["state"];
   private diskWriteTimer: NodeJS.Timeout = null;
   private diskStale = false;
@@ -19,14 +22,25 @@ class StateManager implements Manager {
     return this._initialized;
   }
 
-  public initialize() {
+  public override onPreInitialized() {}
+
+  public onInitialized() {
     if (this._initialized) throw new Error("StateManager is already initialized!");
     this._initialized = true;
+  }
+
+  public override onPostInitialized() {
+    const configStore = this.getDependency(ConfigStore);
+    const watchDog = this.getDependency(WatchDog);
 
     this.currentState = configStore.get("state");
-    watchdog.on("crash", () => {
+    watchDog.on("crash", () => {
       this.panic();
     });
+  }
+
+  public override onTerminated() {
+    this.forceWrite();
   }
 
   public updateState(partialState: Partial<StoreSchema["state"]>) {
@@ -62,6 +76,7 @@ class StateManager implements Manager {
     if (this.panicked) return;
 
     if (this.diskStale) {
+      const configStore = this.getDependency(ConfigStore);
       configStore.set("state", this.currentState);
       this.diskStale = false;
       this.stateUpdates = 0;
@@ -76,5 +91,3 @@ class StateManager implements Manager {
     if (this.diskWriteTimer) clearTimeout(this.diskWriteTimer);
   }
 }
-
-export default new StateManager();

@@ -102,9 +102,7 @@ export default class NowPlayingNotifications extends Integration {
     }
   }
 
-  public provide(): void {
-    throw new Error("Method not implemented.");
-  }
+  public onSetup() {}
 
   public onEnabled() {
     this.playerStateFunction = (state: PlayerState) => this.updateVideoDetails(state);

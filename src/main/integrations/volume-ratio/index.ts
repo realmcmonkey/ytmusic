@@ -2,7 +2,7 @@ import enableScript from "./script/enable.script?raw";
 import disableScript from "./script/disable.script?raw";
 import forceUpdateVolume from "./script/forceupdatevolume.script?raw";
 import Integration from "../integration";
-import ytmviewmanager from "../../ytmviewmanager";
+import YTMViewManager from "../../services/ytmviewmanager";
 
 export default class VolumeRatio extends Integration {
   public override name = "VolumeRatio";
@@ -17,11 +17,15 @@ export default class VolumeRatio extends Integration {
     this.onEnabled();
   };
 
+  public onSetup() {}
+
   public async onEnabled() {
-    ytmviewmanager.on("view-recreated", this.ytmViewRecreatedListener);
+    const ytmViewManager = this.getService(YTMViewManager);
+
+    ytmViewManager.on("view-recreated", this.ytmViewRecreatedListener);
 
     if (!this.injected) {
-      await ytmviewmanager.ready();
+      await ytmViewManager.ready();
       this.executeYTMScript(enableScript);
       this.forceUpdateVolume();
       this.injected = true;
@@ -29,10 +33,12 @@ export default class VolumeRatio extends Integration {
   }
 
   public async onDisabled() {
-    ytmviewmanager.off("view-recreated", this.ytmViewRecreatedListener);
+    const ytmViewManager = this.getService(YTMViewManager);
+
+    ytmViewManager.off("view-recreated", this.ytmViewRecreatedListener);
 
     if (this.injected) {
-      await ytmviewmanager.ready();
+      await ytmViewManager.ready();
       this.executeYTMScript(disableScript);
       this.forceUpdateVolume();
       this.injected = false;

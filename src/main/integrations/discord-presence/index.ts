@@ -3,7 +3,8 @@ import DiscordClient from "./minimal-discord-client";
 import log from "electron-log";
 import { DiscordActivityType } from "./minimal-discord-client/types";
 import Integration from "../integration";
-import memoryStore from "../../memory-store";
+import MemoryStore from "../../services/memorystore";
+import { MemoryStoreSchema } from "~shared/store/schema";
 
 const DISCORD_CLIENT_ID = "1143202598460076053";
 
@@ -65,7 +66,7 @@ export default class DiscordPresence extends Integration {
 
   private connectionRetries: number = 0;
 
-  private UpdateActivity() {
+  private updateActivity() {
     if (this.activityDebounceTimeout) return;
     this.activityDebounceTimeout = setTimeout(() => {
       if (!this.videoDetails) {
@@ -122,7 +123,7 @@ export default class DiscordPresence extends Integration {
       hasFullMetadata &&
       (oldState !== this.videoState || oldId !== this.videoDetails.id || Math.abs(this.progress - oldProgress) > 1 || oldProgress > this.progress)
     ) {
-      this.UpdateActivity();
+      this.updateActivity();
     }
 
     clearTimeout(this.pauseTimeout);
@@ -138,6 +139,7 @@ export default class DiscordPresence extends Integration {
   private retryDiscordConnection() {
     if (!this.isEnabled) return;
     if (this.connectionRetries >= 30) {
+      const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
       memoryStore.set("discordPresenceConnectionFailed", true);
       return;
     }
@@ -152,6 +154,8 @@ export default class DiscordPresence extends Integration {
     }, 5 * 1000);
   }
 
+  public onSetup() {}
+
   public onEnabled(): void {
     if (this.discordClient) return;
     this.discordClient = new DiscordClient(DISCORD_CLIENT_ID);
@@ -159,6 +163,7 @@ export default class DiscordPresence extends Integration {
     this.discordClient.on("connect", () => {
       this.ready = true;
       this.connectionRetries = 0;
+      const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
       memoryStore.set("discordPresenceConnectionFailed", false);
     });
     this.discordClient.on("close", () => {
@@ -176,6 +181,7 @@ export default class DiscordPresence extends Integration {
 
   public onDisabled(): void {
     this.connectionRetries = 0;
+    const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
     memoryStore.set("discordPresenceConnectionFailed", false);
 
     clearTimeout(this.activityDebounceTimeout);

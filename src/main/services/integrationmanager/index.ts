@@ -1,15 +1,16 @@
-import EventEmitter from "node:events";
-import Integration from "./integration";
-import configStore from "../config-store";
+import Integration from "../../integrations/integration";
 import log from "electron-log";
 import { StoreSchema } from "~shared/store/schema";
-import { ValueAtPath } from "~shared/types";
+import { DependencyConstructor, ValueAtPath } from "~shared/types";
+import Service, { EventEmitterService } from "../service";
+import ConfigStore from "../configstore";
 
 type IntegrationCreator<T> = new (...args: unknown[]) => T;
 type IntegrationManagerEventMap = {
   "enable-error": [Integration, Error];
 };
 export enum IntegrationManagerHook {
+  AppBeforeReady,
   AppReady
 }
 
@@ -18,15 +19,25 @@ function getProperty<T, Path extends string>(obj: T, path: Path): ValueAtPath<T,
   return path.split(".").reduce((prev: any, curr) => prev && prev[curr], obj);
 }
 
-class IntegrationManager extends EventEmitter<IntegrationManagerEventMap> {
+export default class IntegrationManager extends EventEmitterService<IntegrationManagerEventMap> {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [ConfigStore];
+
   private integrations: Integration[] = [];
   private enabledIntegrations: Integration[] = [];
 
-  public initialize() {
-    configStore.onDidAnyChange((newState, oldState) => this.reconcileIntegrationEnableState(newState, oldState));
+  public override onPreInitialized() {}
 
+  public onInitialized() {
     log.info("IntegrationManager initialized");
   }
+
+  public override onPostInitialized() {
+    const configStore = this.getDependency(ConfigStore);
+
+    configStore.onDidAnyChange((newState, oldState) => this.reconcileIntegrationEnableState(newState, oldState));
+  }
+
+  public override onTerminated() {}
 
   /**
    * Enables an array of integrations in the order provided
@@ -36,6 +47,7 @@ class IntegrationManager extends EventEmitter<IntegrationManagerEventMap> {
   public createIntegrations(integrations: IntegrationCreator<Integration>[]) {
     for (const integration of integrations) {
       const constructedIntegration = new integration();
+      constructedIntegration.__setServiceHost(this.__getServiceHost());
       this.integrations.push(constructedIntegration);
     }
   }
@@ -47,6 +59,11 @@ class IntegrationManager extends EventEmitter<IntegrationManagerEventMap> {
    */
   public runHook(hook: IntegrationManagerHook) {
     switch (hook) {
+      case IntegrationManagerHook.AppBeforeReady: {
+        this.runIntegrationSetups();
+        break;
+      }
+
       case IntegrationManagerHook.AppReady: {
         this.reconcileIntegrationEnableState();
         break;
@@ -54,7 +71,15 @@ class IntegrationManager extends EventEmitter<IntegrationManagerEventMap> {
     }
   }
 
+  private runIntegrationSetups() {
+    for (const integration of this.integrations) {
+      integration.onSetup();
+    }
+  }
+
   private async reconcileIntegrationEnableState(newState?: Readonly<StoreSchema>, oldState?: Readonly<StoreSchema>) {
+    const configStore = this.getDependency(ConfigStore);
+
     for (const integration of this.integrations) {
       const shouldBeEnabled = newState ? getProperty(newState, integration.storeEnableProperty) : configStore.get(integration.storeEnableProperty);
       if (!integration.isEnabled) {
@@ -98,5 +123,3 @@ class IntegrationManager extends EventEmitter<IntegrationManagerEventMap> {
     }
   }
 }
-
-export default new IntegrationManager();

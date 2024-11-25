@@ -3,11 +3,13 @@ import { OnDidAnyChangeCallback, OnDidChangeCallback } from "conf/dist/source/ty
 import { app, ipcMain } from "electron";
 import log from "electron-log";
 import { StoreSchema } from "~shared/store/schema";
-import { Paths, ValueAtPath } from "~shared/types";
-import windowmanager from "../windowmanager";
-import Manager from "../manager";
+import { DependencyConstructor, Paths, ValueAtPath } from "~shared/types";
+import Service from "../service";
+import AppWindowManager from "../windowmanager";
 
-class ConfigStore implements Manager {
+export default class ConfigStore extends Service {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [AppWindowManager];
+
   private conf: Conf<StoreSchema>;
 
   private _initialized = false;
@@ -15,10 +17,7 @@ class ConfigStore implements Manager {
     return this._initialized;
   }
 
-  public initialize() {
-    if (this._initialized) throw new Error("ConfigStore is already initialized!");
-    this._initialized = true;
-
+  public override onPreInitialized() {
     this.conf = new Conf<StoreSchema>({
       configName: "config",
       cwd: app.getPath("userData"),
@@ -106,8 +105,23 @@ class ConfigStore implements Manager {
       }
     });
 
+    if (this.conf.get("general.disableHardwareAcceleration")) {
+      app.disableHardwareAcceleration();
+      log.info("Hardware acceleration disabled");
+    }
+    if (this.conf.get("playback.enableSpeakerFill")) {
+      app.commandLine.appendSwitch("try-supported-channel-layouts");
+      log.info("Speaker fill enabled");
+    }
+  }
+
+  public override onInitialized() {
+    if (this._initialized) throw new Error("ConfigStore is already initialized!");
+    this._initialized = true;
+
+    const windowManager = this.getDependency(AppWindowManager);
     this.conf.onDidAnyChange((newState, oldState) => {
-      for (const window of windowmanager.getWindows()) {
+      for (const window of windowManager.getWindows()) {
         window.ipcBroadcast("configStore:stateChanged", newState, oldState);
       }
 
@@ -124,6 +138,10 @@ class ConfigStore implements Manager {
 
     log.info("ConfigStore initialized");
   }
+
+  public override onPostInitialized() {}
+
+  public override onTerminated() {}
 
   public get<Key extends Paths<StoreSchema>>(key: Key, defaultValue?: ValueAtPath<StoreSchema, Key>): ValueAtPath<StoreSchema, Key> {
     return this.conf.get(key as string, defaultValue);
@@ -150,5 +168,3 @@ class ConfigStore implements Manager {
     }
   }
 }
-
-export default new ConfigStore();

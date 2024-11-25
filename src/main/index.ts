@@ -1,26 +1,29 @@
 import { app, dialog, ipcMain, Menu, MenuItemConstructorOptions, powerMonitor, safeStorage, screen, Tray } from "electron";
 import log from "electron-log";
-import watchdog from "./watchdog";
-import windowmanager from "./windowmanager";
 import { getIconPath, v1ConfigMigration } from "./util";
-import autoupdater from "./autoupdater";
-import { AppView } from "./windowmanager/appview";
+import { AppView } from "./services/windowmanager/appview";
 import { YTMViewSetupCompletionFlags, YTMViewSetupCompletionFlagsNames, YTMViewStatus } from "~shared/types";
-import ytmviewmanager from "./ytmviewmanager";
-import integrationmanager, { IntegrationManagerHook } from "./integrations/integrationmanager";
 import CompanionServer from "./integrations/companion-server";
 import CustomCSS from "./integrations/custom-css";
 import DiscordPresence from "./integrations/discord-presence";
 import LastFM from "./integrations/last-fm";
 import NowPlayingNotifications from "./integrations/notifications";
 import VolumeRatio from "./integrations/volume-ratio";
-import configStore from "./config-store";
-import memoryStore from "./memory-store";
-import shortcutmanager from "./shortcutmanager";
 import path from "node:path";
-import statemanager from "./statemanager";
-import taskbarmanager from "./taskbarmanager";
 import electronSquirrelStartup from "electron-squirrel-startup";
+import { ServiceHost } from "./services/servicehost";
+import WatchDog from "./services/watchdog";
+import AutoUpdater from "./services/autoupdater";
+import ConfigStore from "./services/configstore";
+import IntegrationManager, { IntegrationManagerHook } from "./services/integrationmanager";
+import YTMViewManager from "./services/ytmviewmanager";
+import ShortcutManager from "./services/shortcutmanager";
+import TaskbarManager from "./services/taskbarmanager";
+import AppWindowManager from "./services/windowmanager";
+import { ServiceCollection } from "./services/servicecollection";
+import StateManager from "./services/statemanager";
+import MemoryStore from "./services/memorystore";
+import { MemoryStoreSchema } from "~shared/store/schema";
 
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
@@ -30,14 +33,34 @@ if (electronSquirrelStartup) {
   app.exit();
 }
 
+const serviceCollection = new ServiceCollection();
+serviceCollection.addServices([
+  WatchDog,
+  ConfigStore,
+  AppWindowManager,
+  MemoryStore<MemoryStoreSchema>,
+  AutoUpdater,
+  StateManager,
+  YTMViewManager,
+  ShortcutManager,
+  TaskbarManager,
+  // This will always go last as it depends on every service since it's an optional system and integrations can perform work with any service
+  IntegrationManager
+]);
+const serviceHost = new ServiceHost(serviceCollection);
+
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.exit(0);
 } else {
   app.on("second-instance", (_, commandLine) => {
-    if (windowmanager.hasWindow("Main")) {
-      const mainWindow = windowmanager.getWindow("Main");
+    // If the service host isn't initialized the app is still starting up
+    if (!serviceHost.initialized) return;
+
+    const windowManager = serviceHost.getService(AppWindowManager);
+    if (windowManager.hasWindow("Main")) {
+      const mainWindow = windowManager.getWindow("Main");
       mainWindow.showAndFocus();
     }
 
@@ -49,6 +72,11 @@ log.info("Application launched");
 
 //#region Protocol Handler
 async function handleProtocol(url: string) {
+  // If the service host isn't initialized the app is still starting up
+  if (!serviceHost.initialized) return;
+
+  const ytmViewManager = serviceHost.getService(YTMViewManager);
+
   log.info("Handling protocol url", url);
   const urlPaths = url.split("://")[1];
   if (urlPaths) {
@@ -60,10 +88,10 @@ async function handleProtocol(url: string) {
             const videoId = paths[1];
             const playlistId = paths[2];
 
-            if (ytmviewmanager.isInitialized()) {
+            if (ytmViewManager.isInitialized()) {
               log.debug(`Navigating to videoId: ${videoId}, playlistId: ${playlistId}`);
-              await ytmviewmanager.ready();
-              ytmviewmanager.getView().webContents.send("remoteControl:execute", "navigate", {
+              await ytmViewManager.ready();
+              ytmViewManager.getView().webContents.send("remoteControl:execute", "navigate", {
                 watchEndpoint: {
                   videoId: videoId,
                   playlistId: playlistId
@@ -93,34 +121,45 @@ if (!app.isDefaultProtocolClient("ytmd")) {
 
 // Application prerequisites before fully starting
 app.enableSandbox();
-watchdog.initialize();
-autoupdater.initialize();
-configStore.initialize();
-statemanager.initialize();
-integrationmanager.initialize();
-ytmviewmanager.initialize();
 
 // appMenu allows for some basic windows management, editMenu allow for copy and paste shortcuts on MacOS
 const template: MenuItemConstructorOptions[] = [{ role: "appMenu", label: "YouTube Music Desktop App" }, { role: "editMenu" }];
 const builtMenu = process.platform === "darwin" ? Menu.buildFromTemplate(template) : null; // null for performance https://www.electronjs.org/docs/latest/tutorial/performance#8-call-menusetapplicationmenunull-when-you-do-not-need-a-default-menu
 Menu.setApplicationMenu(builtMenu);
 
-if (configStore.get("general.disableHardwareAcceleration")) {
-  app.disableHardwareAcceleration();
-  log.info("Hardware acceleration disabled");
-}
-if (configStore.get("playback.enableSpeakerFill")) {
-  app.commandLine.appendSwitch("try-supported-channel-layouts");
-  log.info("Speaker fill enabled");
-}
+// At this stage the next lifecycle is PreInitialized
+serviceHost.runNextLifecycle();
+const integrationManager = serviceHost.getService(IntegrationManager);
+integrationManager.on("enable-error", (integration, error) => {
+  const dialogMessage = `The '${integration.name}' integration failed to be enabled and will be unavailable.\n\n` + `${error.stack}`;
+  dialog.showMessageBox({
+    title: "Integration Error",
+    message: "An integration could not be enabled",
+    detail: dialogMessage,
+    type: "warning",
+    buttons: ["Okay"]
+  });
+});
+integrationManager.createIntegrations([CompanionServer, DiscordPresence, LastFM, NowPlayingNotifications, VolumeRatio, CustomCSS]);
+integrationManager.runHook(IntegrationManagerHook.AppBeforeReady);
 
 let tray;
 let trayContextMenu;
 app.on("ready", async () => {
   log.info("Application ready");
 
+  // At this stage the next lifecycle is Initialized
+  serviceHost.runNextLifecycle();
+
+  const configStore = serviceHost.getService(ConfigStore);
+  const memoryStore = serviceHost.getService(MemoryStore<MemoryStoreSchema>);
+  const autoUpdater = serviceHost.getService(AutoUpdater);
+  const windowManager = serviceHost.getService(AppWindowManager);
+  const ytmViewManager = serviceHost.getService(YTMViewManager);
+  const stateManager = serviceHost.getService(StateManager);
+
   //#region Updater Check
-  const updaterWindow = windowmanager.createWindow("Browser", {
+  const updaterWindow = windowManager.createWindow("Browser", {
     name: "Updater",
     autoRecreate: false,
     waitForViews: true,
@@ -151,12 +190,12 @@ app.on("ready", async () => {
     downloaded: () => updaterWindow.webContents.send("autoUpdater:downloaded"),
     error: () => updaterWindow.webContents.send("autoUpdater:error")
   };
-  autoupdater.once("checking", autoUpdaterCallbacks.checking);
-  autoupdater.once("available", autoUpdaterCallbacks.available);
-  autoupdater.once("not-available", autoUpdaterCallbacks.notAvailable);
-  autoupdater.once("downloaded", autoUpdaterCallbacks.downloaded);
-  autoupdater.once("error", autoUpdaterCallbacks.error);
-  if (await autoupdater.checkForUpdates(true)) {
+  autoUpdater.once("checking", autoUpdaterCallbacks.checking);
+  autoUpdater.once("available", autoUpdaterCallbacks.available);
+  autoUpdater.once("not-available", autoUpdaterCallbacks.notAvailable);
+  autoUpdater.once("downloaded", autoUpdaterCallbacks.downloaded);
+  autoUpdater.once("error", autoUpdaterCallbacks.error);
+  if (await autoUpdater.checkForUpdates(true)) {
     app.relaunch();
     app.exit();
   } else {
@@ -165,19 +204,17 @@ app.on("ready", async () => {
     });
   }
   // Ensure the events are unbinded as we don't need them anymore
-  autoupdater.off("checking", autoUpdaterCallbacks.checking);
-  autoupdater.off("available", autoUpdaterCallbacks.available);
-  autoupdater.off("not-available", autoUpdaterCallbacks.notAvailable);
-  autoupdater.off("downloaded", autoUpdaterCallbacks.downloaded);
-  autoupdater.off("error", autoUpdaterCallbacks.error);
+  autoUpdater.off("checking", autoUpdaterCallbacks.checking);
+  autoUpdater.off("available", autoUpdaterCallbacks.available);
+  autoUpdater.off("not-available", autoUpdaterCallbacks.notAvailable);
+  autoUpdater.off("downloaded", autoUpdaterCallbacks.downloaded);
+  autoUpdater.off("error", autoUpdaterCallbacks.error);
   //#endregion
 
+  // At this stage the next lifecycle is PostInitialized
+  serviceHost.runNextLifecycle();
+
   v1ConfigMigration();
-
-  shortcutmanager.initialize();
-  taskbarmanager.initialize();
-
-  ytmviewmanager.lateInitialize();
 
   //#region safeStorage setup and checks
   if (!safeStorage.isEncryptionAvailable()) {
@@ -244,7 +281,7 @@ app.on("ready", async () => {
     }
   });
 
-  const mainWindow = windowmanager.createWindow("Browser", {
+  const mainWindow = windowManager.createWindow("Browser", {
     name: "Main",
     autoRecreate: false,
     waitForViews: true,
@@ -281,22 +318,22 @@ app.on("ready", async () => {
   });
 
   mainWindow.on("electronwindow-resize", () => {
-    statemanager.updateState({
+    stateManager.updateState({
       windowBounds: mainWindow._getElectronWindow().getBounds()
     });
   });
   mainWindow.on("electronwindow-move", () => {
-    statemanager.updateState({
+    stateManager.updateState({
       windowBounds: mainWindow._getElectronWindow().getBounds()
     });
   });
   mainWindow.on("electronwindow-maximize", () => {
-    statemanager.updateState({
+    stateManager.updateState({
       windowMaximized: true
     });
   });
   mainWindow.on("electronwindow-unmaximize", () => {
-    statemanager.updateState({
+    stateManager.updateState({
       windowMaximized: false
     });
   });
@@ -310,13 +347,13 @@ app.on("ready", async () => {
   });
 
   mainWindow.ipcOn("window:openSettings", () => {
-    if (windowmanager.hasWindow("Settings")) {
-      windowmanager.getWindow("Settings").showAndFocus();
+    if (windowManager.hasWindow("Settings")) {
+      windowManager.getWindow("Settings").showAndFocus();
       return;
     }
 
     const mainWindowBounds = mainWindow._getElectronWindow().getBounds();
-    windowmanager.createWindow("Browser", {
+    windowManager.createWindow("Browser", {
       name: "Settings",
       autoRecreate: false,
       waitForViews: true,
@@ -351,7 +388,7 @@ app.on("ready", async () => {
     });
   });
   mainWindow.ipcOn("ytmView:navigateDefault", () => {
-    const ytmView = ytmviewmanager.getView();
+    const ytmView = ytmViewManager.getView();
     if (ytmView) ytmView.webContents.loadURL("https://music.youtube.com/");
   });
   //#endregion
@@ -390,24 +427,24 @@ app.on("ready", async () => {
       label: "Play/Pause",
       type: "normal",
       click: async () => {
-        await ytmviewmanager.ready();
-        ytmviewmanager.getView().webContents.send("remoteControl:execute", "playPause");
+        await ytmViewManager.ready();
+        ytmViewManager.getView().webContents.send("remoteControl:execute", "playPause");
       }
     },
     {
       label: "Previous",
       type: "normal",
       click: async () => {
-        await ytmviewmanager.ready();
-        ytmviewmanager.getView().webContents.send("remoteControl:execute", "previous");
+        await ytmViewManager.ready();
+        ytmViewManager.getView().webContents.send("remoteControl:execute", "previous");
       }
     },
     {
       label: "Next",
       type: "normal",
       click: async () => {
-        await ytmviewmanager.ready();
-        ytmviewmanager.getView().webContents.send("remoteControl:execute", "next");
+        await ytmViewManager.ready();
+        ytmViewManager.getView().webContents.send("remoteControl:execute", "next");
       }
     },
     {
@@ -433,26 +470,14 @@ app.on("ready", async () => {
   // Wait for the main window to be ready
   await mainWindow.ready();
 
-  integrationmanager.on("enable-error", (integration, error) => {
-    const dialogMessage = `The '${integration.name}' integration failed to be enabled and will be unavailable.\n\n` + `${error.stack}`;
-    dialog.showMessageBox({
-      title: "Integration Error",
-      message: "An integration could not be enabled",
-      detail: dialogMessage,
-      type: "warning",
-      buttons: ["Okay"]
-    });
-  });
-  integrationmanager.createIntegrations([CompanionServer, DiscordPresence, LastFM, NowPlayingNotifications, VolumeRatio, CustomCSS]);
-
   // Attach events for the ytmviewmanager
-  ytmviewmanager.on("status-changed", async () => {
-    mainView.webContents.send("ytmView:statusChanged", ytmviewmanager.status);
-    if (ytmviewmanager.status === YTMViewStatus.Ready) {
+  ytmViewManager.on("status-changed", async () => {
+    mainView.webContents.send("ytmView:statusChanged", ytmViewManager.status);
+    if (ytmViewManager.status === YTMViewStatus.Ready) {
       await mainView.hide(true);
-      if (ytmviewmanager.hasError()) {
-        const hookError = ytmviewmanager.getError();
-        const setupFlags = ytmviewmanager.getSetupFlags();
+      if (ytmViewManager.hasError()) {
+        const hookError = ytmViewManager.getError();
+        const setupFlags = ytmViewManager.getSetupFlags();
         const setFlags = YTMViewSetupCompletionFlagsNames.filter(key => (setupFlags & YTMViewSetupCompletionFlags[key]) !== 0);
         const unsetFlags = YTMViewSetupCompletionFlagsNames.filter(key => (setupFlags & YTMViewSetupCompletionFlags[key]) === 0);
 
@@ -471,27 +496,27 @@ app.on("ready", async () => {
       await mainView.show(true);
     }
   });
-  ytmviewmanager.on("view-recreated", async () => {
+  ytmViewManager.on("view-recreated", async () => {
     await mainView.show(true);
   });
-  ytmviewmanager.on("unresponsive", async () => {
+  ytmViewManager.on("unresponsive", async () => {
     await mainView.show(true);
   });
-  ytmviewmanager.on("responsive", async () => {
+  ytmViewManager.on("responsive", async () => {
     await mainView.hide(true);
   });
 
   // Initially create the YTM view and attach it
-  ytmviewmanager.createView();
-  mainWindow.attachView(ytmviewmanager.getView(), 0);
+  ytmViewManager.createView();
+  mainWindow.attachView(ytmViewManager.getView(), 0);
 
   // This hides the main view if it was recreated and the YTMView is in a ready state
   await mainView.on("recreated", async () => {
-    await ytmviewmanager.ready();
+    await ytmViewManager.ready();
     await mainView.hide(true);
   });
 
-  integrationmanager.runHook(IntegrationManagerHook.AppReady);
+  integrationManager.runHook(IntegrationManagerHook.AppReady);
 });
 
 app.on("open-url", (_, url) => {
@@ -501,17 +526,19 @@ app.on("open-url", (_, url) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- powerMonitor doesn't have proper types?
 powerMonitor.on("shutdown", (event: any) => {
   event.preventDefault();
-  statemanager.forceWrite();
+  const stateManager = serviceHost.getService(StateManager);
+  stateManager.forceWrite();
   app.quit();
 });
 app.on("before-quit", () => {
   log.debug("Application going to quit");
-  windowmanager.forceWindowClosures();
+
+  const windowManager = serviceHost.getService(AppWindowManager);
+  windowManager.forceWindowClosures();
 });
 app.on("quit", () => {
   log.debug("Application quit");
-  statemanager.forceWrite();
-});
-process.on("exit", () => {
-  statemanager.forceWrite();
+
+  // At this stage the next lifecycle is Terminated
+  serviceHost.runNextLifecycle();
 });

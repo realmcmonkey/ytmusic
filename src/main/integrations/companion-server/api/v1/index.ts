@@ -1,5 +1,5 @@
 import { BrowserWindow, ipcMain } from "electron";
-import { FastifyPluginCallback } from "fastify";
+import { FastifyPluginCallback, FastifyPluginOptions } from "fastify";
 import playerStateStore, { PlayerState, RepeatMode } from "../../../../player-state-store";
 import { createAuthToken, getIsTemporaryAuthCodeValidAndRemove, getTemporaryAuthCode, isAuthValid, isAuthValidMiddleware } from "../../api-shared/auth";
 import fastifyRateLimit from "@fastify/rate-limit";
@@ -28,8 +28,12 @@ import {
   YouTubeMusicUnavailableError
 } from "../../api-shared/errors";
 import path from "node:path";
-import ytmviewmanager from "../../../../ytmviewmanager";
-import memoryStore from "../../../../memory-store";
+import Service from "../../../../services/service";
+import { Constructor } from "~shared/types";
+import YTMViewManager from "../../../../services/ytmviewmanager";
+import MemoryStore from "../../../../services/memorystore";
+import { MemoryStoreSchema } from "~shared/store/schema";
+import ConfigStore from "../../../../services/configstore";
 
 declare const ALL_WINDOWS_VITE_DEV_SERVER_URL: string;
 
@@ -82,6 +86,10 @@ const transformPlayerState = (state: PlayerState) => {
   };
 };
 
+interface CompanionServerAPIv1Options extends FastifyPluginOptions {
+  getService: <T extends Service>(service: Constructor<T>) => T;
+}
+
 type Playlist = {
   id: string;
   title: string;
@@ -89,9 +97,10 @@ type Playlist = {
 
 const authorizationWindows: BrowserWindow[] = [];
 
-const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
+const CompanionServerAPIv1: FastifyPluginCallback<CompanionServerAPIv1Options> = async (fastify, options) => {
   const sendCommand = (commandRequest: APIV1CommandRequestBodyType) => {
-    const ytmView = ytmviewmanager.getView();
+    const ytmViewManager = options.getService(YTMViewManager);
+    const ytmView = ytmViewManager.getView();
     if (ytmView) {
       switch (commandRequest.command) {
         case "playPause": {
@@ -246,6 +255,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
       }
     },
     async (request, response) => {
+      const memoryStore = options.getService(MemoryStore<MemoryStoreSchema>);
       const companionServerAuthWindowEnabled = memoryStore.get("companionServerAuthWindowEnabled") ?? false;
 
       // API Users: The user has companion server authorization disabled, show a feedback error accordingly
@@ -278,6 +288,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
       }
     },
     async (request, response) => {
+      const memoryStore = options.getService(MemoryStore<MemoryStoreSchema>);
       const companionServerAuthWindowEnabled = memoryStore.get("companionServerAuthWindowEnabled") ?? false;
 
       // There's too many authorization windows open and we have to reject this request for now (this is unlikely to occur but this prevents malicious use of spamming auth windows)
@@ -397,7 +408,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
         ipcMain.removeListener(`companionWindow:close:${requestId}`, closeListener);
 
         if (authorized) {
-          const token = createAuthToken(authData.appId, authData.appVersion, authData.appName);
+          const token = createAuthToken(options.getService(ConfigStore), authData.appId, authData.appVersion, authData.appName);
 
           response.send({
             token
@@ -431,11 +442,12 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
         }
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(request, response, next);
+        return isAuthValidMiddleware(options.getService(ConfigStore), request, response, next);
       }
     },
     async (request, response) => {
-      const ytmView = ytmviewmanager.getView();
+      const ytmViewManager = options.getService(YTMViewManager);
+      const ytmView = ytmViewManager.getView();
       if (ytmView) {
         const requestId = crypto.randomUUID();
 
@@ -474,7 +486,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
         }
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(request, response, next);
+        return isAuthValidMiddleware(options.getService(ConfigStore), request, response, next);
       }
     },
     (request, response) => {
@@ -499,7 +511,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
         body: APIV1CommandRequestBody
       },
       preHandler: (request, response, next) => {
-        return isAuthValidMiddleware(request, response, next);
+        return isAuthValidMiddleware(options.getService(ConfigStore), request, response, next);
       }
     },
     (request, response) => {
@@ -511,7 +523,7 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
   fastify.ready().then(() => {
     fastify.io.of("/api/v1/realtime").use((socket, next) => {
       const token = socket.handshake.auth.token;
-      const [validSession, tokenId] = isAuthValid(token);
+      const [validSession, tokenId] = isAuthValid(options.getService(ConfigStore), token);
       if (validSession) {
         socket.data.tokenId = tokenId;
         next();
@@ -532,7 +544,8 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
     playerStateStore.addEventListener(stateStoreListener);
 
     const createPlaylistObservedListener = (event: Electron.IpcMainEvent, playlist: Playlist) => {
-      const ytmView = ytmviewmanager.getView();
+      const ytmViewManager = options.getService(YTMViewManager);
+      const ytmView = ytmViewManager.getView();
       if (event.sender !== ytmView.webContents) return;
 
       fastify.io.of("/api/v1/realtime").emit("playlist-created", playlist);
@@ -540,7 +553,8 @@ const CompanionServerAPIv1: FastifyPluginCallback = async fastify => {
     ipcMain.on("ytmView:createPlaylistObserved", createPlaylistObservedListener);
 
     const deletePlaylistObservedListener = (event: Electron.IpcMainEvent, playlistId: string) => {
-      const ytmView = ytmviewmanager.getView();
+      const ytmViewManager = options.getService(YTMViewManager);
+      const ytmView = ytmViewManager.getView();
       if (event.sender !== ytmView.webContents) return;
 
       fastify.io.of("/api/v1/realtime").emit("playlist-deleted", playlistId);

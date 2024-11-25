@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { safeStorage } from "electron";
 import { FastifyReply, FastifyRequest, HookHandlerDoneFunction } from "fastify";
 import { AuthToken } from "../../../../shared/integrations/companion-server/types";
-import configStore from "../../../config-store";
+import ConfigStore from "../../../services/configstore";
 
 const temporaryCodeMap: { [code: string]: { appId: string; appVersion: string; appName: string } } = {};
 
@@ -54,7 +54,7 @@ export function getIsTemporaryAuthCodeValidAndRemove(appId: string, code: string
   return false;
 }
 
-export function createAuthToken(appId: string, appVersion: string, appName: string) {
+export function createAuthToken(configStore: ConfigStore, appId: string, appVersion: string, appName: string) {
   let authTokens: AuthToken[] = [];
   try {
     authTokens = JSON.parse(safeStorage.decryptString(Buffer.from(configStore.get("integrations.companionServerAuthTokens"), "hex")));
@@ -85,7 +85,7 @@ export function createAuthToken(appId: string, appVersion: string, appName: stri
   return token;
 }
 
-export function isAuthValid(authToken: string): [boolean, string] {
+export function isAuthValid(configStore: ConfigStore, authToken: string): [boolean, string] {
   if (!authToken) return [false, null];
 
   const authTokenHash = crypto.createHash("sha256").update(authToken).digest("hex");
@@ -115,7 +115,7 @@ export function isAuthValid(authToken: string): [boolean, string] {
   return [false, null];
 }
 
-export function isAuthValidMiddleware(request: FastifyRequest, response: FastifyReply, next: HookHandlerDoneFunction) {
+export function isAuthValidMiddleware(configStore: ConfigStore, request: FastifyRequest, response: FastifyReply, next: HookHandlerDoneFunction) {
   const authToken = request.headers.authorization;
   if (!authToken) {
     response.code(401);
@@ -125,7 +125,7 @@ export function isAuthValidMiddleware(request: FastifyRequest, response: Fastify
     return;
   }
 
-  const [validSession, tokenId] = isAuthValid(authToken);
+  const [validSession, tokenId] = isAuthValid(configStore, authToken);
 
   if (validSession) {
     request.authId = tokenId;

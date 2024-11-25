@@ -1,8 +1,9 @@
 import { app, autoUpdater, ipcMain } from "electron";
 import log from "electron-log";
-import EventEmitter from "node:events";
-import Manager from "../manager";
-import memoryStore from "../memory-store";
+import Service, { EventEmitterService } from "../service";
+import { DependencyConstructor } from "~shared/types";
+import MemoryStore from "../memorystore";
+import { MemoryStoreSchema } from "~shared/store/schema";
 
 declare const YTMD_DISABLE_UPDATES: boolean;
 declare const YTMD_UPDATE_FEED_OWNER: string;
@@ -24,7 +25,9 @@ export enum AutoUpdaterState {
   Error
 }
 
-class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
+export default class AutoUpdater extends EventEmitterService<AutoUpdaterEvents> {
+  public static override readonly dependencies: DependencyConstructor<Service>[] = [MemoryStore<MemoryStoreSchema>];
+
   private autoUpdaterEnabled = false;
   private updateFeedUrl = `https://update.electronjs.org/${YTMD_UPDATE_FEED_OWNER}/${YTMD_UPDATE_FEED_REPOSITORY}/${process.platform}-${process.arch}/${app.getVersion()}`;
   private state = AutoUpdaterState.NotAvailable;
@@ -44,7 +47,9 @@ class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
     return false;
   }
 
-  public initialize() {
+  public override onPreInitialized() {}
+
+  public override onInitialized() {
     if (this._initialized) throw new Error("AutoUpdater is already initialized!");
     this._initialized = true;
 
@@ -56,6 +61,7 @@ class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
     });
 
     if (this.shouldDisableUpdates()) {
+      const memoryStore = this.getDependency(MemoryStore<MemoryStoreSchema>);
       memoryStore.set("autoUpdaterDisabled", true);
       return;
     }
@@ -100,6 +106,10 @@ class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
     log.info("AutoUpdater initialized");
   }
 
+  public override onPostInitialized() {}
+
+  public override onTerminated() {}
+
   /**
    *
    * @param wait Wait for update check to complete
@@ -124,6 +134,8 @@ class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
   }
 
   private reconcileMemoryStoreState() {
+    const memoryStore = this.getDependency(MemoryStore<MemoryStoreSchema>);
+
     switch (this.state) {
       case AutoUpdaterState.Checking: {
         memoryStore.set("autoUpdaterChecking", true);
@@ -168,5 +180,3 @@ class AutoUpdater extends EventEmitter<AutoUpdaterEvents> implements Manager {
     }
   }
 }
-
-export default new AutoUpdater();

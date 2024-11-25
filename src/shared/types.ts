@@ -36,3 +36,8 @@ export type ValueAtPath<T, P extends string> = P extends `${infer K}.${infer Res
   : P extends keyof T
     ? T[P]
     : never;
+
+export type Constructor<T> = new (...args: unknown[]) => T;
+export type DependencyConstructor<T> = Constructor<T> & {
+  dependencies: DependencyConstructor<T>[];
+};

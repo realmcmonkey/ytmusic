@@ -1,8 +1,10 @@
 import { StoreSchema } from "~shared/store/schema";
-import { Paths } from "~shared/types";
-import ytmviewmanager from "../ytmviewmanager";
+import { Constructor, Paths } from "~shared/types";
+import { ServiceHost } from "../services/servicehost";
+import YTMViewManager from "../services/ytmviewmanager";
+import Service from "../services/service";
 
-// Enforces TypeScript to not allow overriding a method
+// Enforces TypeScript to not allow overriding a method (MUST NOT BE EXPORTED)
 declare const _never: unique symbol;
 type NoOverride = { [_never]: typeof _never };
 
@@ -25,6 +27,8 @@ export default abstract class Integration {
     return this._isEnabled;
   }
 
+  private host: ServiceHost;
+
   constructor() {}
 
   /**
@@ -45,11 +49,37 @@ export default abstract class Integration {
     return null;
   }
 
-  protected executeYTMScript(script: string): NoOverride {
-    ytmviewmanager.getView().webContents.send("remoteControl:executeScript", script);
+  public __setServiceHost(host: ServiceHost): NoOverride {
+    this.host = host;
     return null;
   }
 
+  protected getService<T extends Service>(service?: Constructor<T>): T {
+    return this.host.getService<T>(service);
+  }
+
+  protected executeYTMScript(script: string): NoOverride {
+    const ytmViewManager = this.host.getService(YTMViewManager);
+    ytmViewManager.getView().webContents.send("remoteControl:executeScript", script);
+    return null;
+  }
+
+  /**
+   * This function is run before the app has emitted ready
+   *
+   * The integration is not enabled at this point
+   */
+  public abstract onSetup(): void;
+  /**
+   * The integration ias been enabled
+   *
+   * This is always run after the app has emitted ready
+   */
   public abstract onEnabled(): void;
+  /**
+   * The integration ias been enabled
+   *
+   * This is always run after the app has emitted ready
+   */
   public abstract onDisabled(): void;
 }

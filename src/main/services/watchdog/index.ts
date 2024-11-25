@@ -1,6 +1,6 @@
 import { app, clipboard, crashReporter, dialog } from "electron";
 import log, { LogMessage } from "electron-log";
-import Manager from "../manager";
+import Service from "../service";
 
 export type WatchDogEvent = "crash";
 export type WatchDogEventCallback = () => void;
@@ -9,7 +9,7 @@ export enum WatchDogApplicationState {
   Crashed
 }
 
-class WatchDog implements Manager {
+export default class WatchDog extends Service {
   private eventCallbacks: { [key in WatchDogEvent]: WatchDogEventCallback[] } = {
     crash: []
   };
@@ -38,7 +38,9 @@ class WatchDog implements Manager {
     return message;
   }
 
-  public initialize() {
+  public override onPreInitialized() {}
+
+  public override onInitialized() {
     if (this._initialized) throw new Error("WatchDog is already initialized!");
     this._initialized = true;
 
@@ -111,6 +113,10 @@ class WatchDog implements Manager {
     log.info("WatchDog initialized");
   }
 
+  public override onPostInitialized() {}
+
+  public override onTerminated() {}
+
   public on(event: WatchDogEvent, callback: () => void) {
     this.eventCallbacks[event].push(callback);
   }
@@ -120,5 +126,3 @@ class WatchDog implements Manager {
     if (index > -1) this.eventCallbacks[event] = this.eventCallbacks[event].splice(index, 1);
   }
 }
-
-export default new WatchDog();

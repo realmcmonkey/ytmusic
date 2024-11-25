@@ -9,10 +9,12 @@ import cors from "@fastify/cors";
 import log from "electron-log";
 import { isDefinedAPIError } from "./api-shared/errors";
 import Integration from "../integration";
-import configStore from "../../config-store";
-import memoryStore from "../../memory-store";
 import { safeStorage } from "electron";
 import { MemoryStoreSchema } from "~shared/store/schema";
+import MemoryStore from "../../services/memorystore";
+import ConfigStore from "../../services/configstore";
+import { Constructor } from "~shared/types";
+import Service from "src/main/services/service";
 
 export default class CompanionServer extends Integration {
   public name = "CompanionServer";
@@ -26,6 +28,7 @@ export default class CompanionServer extends Integration {
   private authWindowTimeout: NodeJS.Timeout | null = null;
 
   private createServer() {
+    const configStore = this.getService(ConfigStore);
     this.fastifyServer = Fastify().withTypeProvider<TypeBoxTypeProvider>();
     this.fastifyServer.register(cors, {
       origin: configStore.get("integrations.companionServerCORSWildcardEnabled", false) ? "*" : false
@@ -39,7 +42,10 @@ export default class CompanionServer extends Integration {
       }
     });
     this.fastifyServer.register(CompanionServerAPIv1, {
-      prefix: "/api/v1"
+      prefix: "/api/v1",
+      getService: <T extends Service>(service: Constructor<T>) => {
+        return this.getService<T>(service);
+      }
     });
     this.fastifyServer.setErrorHandler((error, request, reply) => {
       if (!isDefinedAPIError(error)) {
@@ -64,7 +70,12 @@ export default class CompanionServer extends Integration {
     });
   }
 
+  public onSetup() {}
+
   public async onEnabled() {
+    const configStore = this.getService(ConfigStore);
+    const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
+
     if (!memoryStore.get("safeStorageAvailable")) {
       log.info("Refusing to enable Companion Server Integration with reason: safeStorage unavailable");
       return;
@@ -102,6 +113,7 @@ export default class CompanionServer extends Integration {
   }
 
   public async onDisabled() {
+    const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
     memoryStore.set("companionServerAuthWindowEnabled", false);
     memoryStore.removeOnStateChanged(this.memoryStoryListenerCallback);
     if (this.fastifyServer) {
@@ -116,6 +128,7 @@ export default class CompanionServer extends Integration {
     if (newState.companionServerAuthWindowEnabled && !oldState.companionServerAuthWindowEnabled) {
       this.authWindowTimeout = setTimeout(
         () => {
+          const memoryStore = this.getService(MemoryStore<MemoryStoreSchema>);
           memoryStore.set("companionServerAuthWindowEnabled", false);
           this.authWindowTimeout = null;
         },

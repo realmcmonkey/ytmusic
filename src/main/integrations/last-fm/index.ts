@@ -6,8 +6,8 @@ import playerStateStore, { PlayerState, VideoDetails, VideoState } from "../../p
 import { LastfmErrorResponse, LastfmRequestBody, LastfmSessionResponse, LastfmTokenResponse } from "./schemas";
 import log from "electron-log";
 import Integration from "../integration";
-import memoryStore from "../../memory-store";
-import configStore from "../../config-store";
+import memoryStore from "../../services/memorystore";
+import configStore from "../../services/configstore";
 import { StoreSchema } from "~shared/store/schema";
 
 export default class LastFM extends Integration {
@@ -170,6 +170,8 @@ export default class LastFM extends Integration {
   }
 
   // ----------------------------------------------------------
+
+  public onSetup() {}
 
   public onEnabled(): void {
     if (!memoryStore.get("safeStorageAvailable")) {
